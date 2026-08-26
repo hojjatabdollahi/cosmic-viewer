@@ -1323,7 +1323,7 @@ impl CosmicViewer {
         } else {
             0.1
         };
-        let new_zoom = (old_zoom * factor).clamp(floor, 10.0);
+        let new_zoom = (old_zoom * factor).clamp(floor, 5.0);
 
         if let Some(size) = self.viewport.image_size()
             && let Some(preview) = self.viewport.preview_mut()
@@ -2882,6 +2882,7 @@ impl Application for CosmicViewer {
                             let dy = pan.y.clamp(-max_y, max_y);
                             let dv = Vector::new(dx, dy);
                             if let Some(crop) = crop {
+                                // TODO do we need to update with the zoom already applied?
                                 crop.pan(dv / fit_scale);
                             }
 
@@ -3440,7 +3441,11 @@ impl Application for CosmicViewer {
                             && let Some(size) = img_size
                         {
                             crop.set_ratio(ratio, size);
+
                             self.crop_ratio = ratio;
+                            return self.update(ViewerMessage::Canvas(CanvasMessage::Pan(
+                                Default::default(),
+                            )));
                         }
                     }
                     EditMessage::RotateLeft => {
@@ -3477,6 +3482,9 @@ impl Application for CosmicViewer {
                                     preview.as_any_mut().downcast_mut::<CropSelection>()
                             {
                                 crop.activate(self.crop_ratio, new_size);
+                                return self.update(ViewerMessage::Canvas(CanvasMessage::Pan(
+                                    Default::default(),
+                                )));
                             }
                         }
                     }
@@ -3514,6 +3522,9 @@ impl Application for CosmicViewer {
                                     preview.as_any_mut().downcast_mut::<CropSelection>()
                             {
                                 crop.activate(self.crop_ratio, new_size);
+                                return self.update(ViewerMessage::Canvas(CanvasMessage::Pan(
+                                    Default::default(),
+                                )));
                             }
                         }
                     }
@@ -3788,6 +3799,9 @@ impl Application for CosmicViewer {
                                 {
                                     let ratio = selection.ratio;
                                     selection.activate(ratio, new_size);
+                                    return self.update(ViewerMessage::Canvas(CanvasMessage::Pan(
+                                        Default::default(),
+                                    )));
                                 }
                             } else {
                                 self.viewport.rebuild_display();
