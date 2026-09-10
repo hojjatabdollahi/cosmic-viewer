@@ -30,6 +30,10 @@ impl PencilPreview {
 }
 
 impl ToolOperation for PencilPreview {
+    fn clone_boxed(&self) -> Box<dyn ToolOperation> {
+        Box::new(self.clone())
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, _scale: f32) {
         if self.points.len() < 2 {
             return;

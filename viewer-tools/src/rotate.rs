@@ -34,6 +34,10 @@ impl RotateOperation {
 }
 
 impl ToolOperation for RotateOperation {
+    fn clone_boxed(&self) -> Box<dyn ToolOperation> {
+        Box::new(self.clone())
+    }
+
     fn draw(&self, _frame: &mut Frame<Renderer>, _image_size: Size, _scale: f32) {
         // No overlay for rotation
     }

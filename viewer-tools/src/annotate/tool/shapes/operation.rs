@@ -66,6 +66,10 @@ impl ShapeOperation {
 }
 
 impl ToolOperation for ShapeOperation {
+    fn clone_boxed(&self) -> Box<dyn ToolOperation> {
+        Box::new(self.clone())
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, scale: f32) {
         draw_shape(
             self.kind, self.start, self.end, self.color, self.width, frame, scale,

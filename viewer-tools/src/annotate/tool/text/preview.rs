@@ -848,6 +848,10 @@ impl TextPreview {
 }
 
 impl ToolOperation for TextPreview {
+    fn clone_boxed(&self) -> Box<dyn ToolOperation> {
+        Box::new(self.clone())
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, scale: f32) {
         self.last_scale.set(scale);
 

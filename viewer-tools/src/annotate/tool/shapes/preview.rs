@@ -35,6 +35,10 @@ impl ShapePreview {
 }
 
 impl ToolOperation for ShapePreview {
+    fn clone_boxed(&self) -> Box<dyn ToolOperation> {
+        Box::new(self.clone())
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, scale: f32) {
         if let (Some(start), Some(end)) = (self.start, self.end) {
             draw_shape(self.kind, start, end, self.color, self.width, frame, scale);

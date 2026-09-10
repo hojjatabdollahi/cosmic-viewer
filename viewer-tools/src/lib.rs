@@ -28,6 +28,10 @@ pub trait ToolOperation: Debug {
     /// The frame is already translated/scaled to image coordinates.
     fn draw(&self, frame: &mut Frame<Renderer>, image_size: Size, scale: f32);
 
+    /// A boxed copy, for rasterizing a transformed version without touching
+    /// the original.
+    fn clone_boxed(&self) -> Box<dyn ToolOperation>;
+
     /// Apply the operation destructively to the image pixels.
     /// Called at save time when flattening all committed operations.
     fn apply(&self, image: &mut DynamicImage);

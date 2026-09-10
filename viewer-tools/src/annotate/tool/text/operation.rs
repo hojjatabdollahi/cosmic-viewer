@@ -212,6 +212,10 @@ impl TextOperation {
 }
 
 impl ToolOperation for TextOperation {
+    fn clone_boxed(&self) -> Box<dyn ToolOperation> {
+        Box::new(self.clone())
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, _scale: f32) {
         if self.spans.is_empty() {
             return;

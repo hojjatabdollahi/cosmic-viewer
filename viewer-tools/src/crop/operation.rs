@@ -26,6 +26,10 @@ impl CropOperation {
 }
 
 impl ToolOperation for CropOperation {
+    fn clone_boxed(&self) -> Box<dyn ToolOperation> {
+        Box::new(self.clone())
+    }
+
     fn draw(&self, _frame: &mut Frame<Renderer>, _image_size: Size, _scale: f32) {}
 
     // reason: region holds non-negative pixel coordinates within image bounds;
