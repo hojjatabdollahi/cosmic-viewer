@@ -4,6 +4,9 @@ pub mod annotate;
 pub mod crop;
 pub mod renderer;
 pub mod rotate;
+pub mod stack;
+
+pub use stack::OperationStack;
 
 // Re-exports
 pub use crate::annotate::FONT_SIZE_PRESETS_PT;
