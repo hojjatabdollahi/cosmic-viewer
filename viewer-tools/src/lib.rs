@@ -23,7 +23,7 @@ use std::{any::Any, fmt::Debug};
 /// Active tool previews (like `CropSelection` during drag) implement this
 /// trait for rendering but are never committed to the stack; they are "transparent"
 /// operations.
-pub trait ToolOperation: Debug {
+pub trait ToolOperation: Debug + Send {
     /// Draw the operation's overlay onto the frame.
     /// The frame is already translated/scaled to image coordinates.
     fn draw(&self, frame: &mut Frame<Renderer>, image_size: Size, scale: f32);
