@@ -117,9 +117,11 @@ impl ToolOperation for PenOperation {
         true
     }
 
+    fn bounds(&self) -> Option<Rectangle> {
+        crate::stroke_bounds(&self.points, self.width)
+    }
+
     fn hit_test(&self, point: Point) -> bool {
-        self.points
-            .iter()
-            .any(|p| point.distance(*p) < 4. * self.width)
+        crate::stroke_hit(&self.points, self.width, point)
     }
 }

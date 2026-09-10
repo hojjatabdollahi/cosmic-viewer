@@ -204,6 +204,23 @@ mod tests {
     }
 
     #[test]
+    fn strokes_are_picked_along_the_line_not_the_box() {
+        use crate::annotate::PenOperation;
+        let mut stack = OperationStack::new();
+        // A diagonal: its box covers (0,0)-(100,100) but the line does not.
+        stack.commit(Box::new(PenOperation {
+            points: (0..=10)
+                .map(|i| Point::new(i as f32 * 10.0, i as f32 * 10.0))
+                .collect(),
+            color: Color::BLACK,
+            width: 4.0,
+        }));
+        assert_eq!(stack.hit(Point::new(52.0, 48.0)), Some(0));
+        assert_eq!(stack.hit(Point::new(90.0, 10.0)), None);
+        assert!(stack.committed[0].bounds().is_some());
+    }
+
+    #[test]
     fn clone_is_independent() {
         let mut stack = OperationStack::new();
         stack.commit(shape(0.0));

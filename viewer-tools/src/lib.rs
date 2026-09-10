@@ -91,6 +91,35 @@ impl SampleSource<'_> {
     }
 }
 
+/// How far from a stroke's center line a press still picks it, beyond its
+/// own half-width.
+pub const STROKE_PICK_SLACK: f32 = 6.0;
+
+/// The box around a freehand stroke of `width`, or `None` for no points.
+#[must_use]
+pub fn stroke_bounds(points: &[Point], width: f32) -> Option<Rectangle> {
+    let first = points.first()?;
+    let (mut x0, mut y0, mut x1, mut y1) = (first.x, first.y, first.x, first.y);
+    for p in points {
+        x0 = x0.min(p.x);
+        y0 = y0.min(p.y);
+        x1 = x1.max(p.x);
+        y1 = y1.max(p.y);
+    }
+    let half = width / 2.0;
+    Some(Rectangle::new(
+        Point::new(x0 - half, y0 - half),
+        Size::new(x1 - x0 + width, y1 - y0 + width),
+    ))
+}
+
+/// Whether `point` lies on a freehand stroke of `width`, with some slack.
+#[must_use]
+pub fn stroke_hit(points: &[Point], width: f32, point: Point) -> bool {
+    let reach = width / 2.0 + STROKE_PICK_SLACK;
+    points.iter().any(|p| point.distance(*p) <= reach)
+}
+
 /// Rasterize `ops` onto `image`, which covers `region` of operation space at
 /// `scale` image pixels per operation unit.
 ///
