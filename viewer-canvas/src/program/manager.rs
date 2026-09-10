@@ -20,7 +20,7 @@ use cosmic::{
 use image::DynamicImage;
 use std::cell::Cell;
 use viewer_tools::{
-    ToolOperation,
+    OperationStack, ToolOperation,
     crop::{CropSelection, DragHandle},
 };
 
@@ -49,11 +49,8 @@ pub struct ViewportManager {
     pan: Vector,
     active_tool: Option<ToolKind>,
     pub tool_dragging: bool,
-    /// Committed operations (undo stack)
-    operations: Vec<Box<dyn ToolOperation>>,
-    redo_stack: Vec<Box<dyn ToolOperation>>,
-    // Live preview for the active tool
-    active_preview: Option<Box<dyn ToolOperation>>,
+    /// Committed operations, undo history and the active tool's preview
+    stack: OperationStack,
     last_bounds: Cell<Rectangle>,
     crop_pan: Cell<Option<(Point, Vector)>>,
 }
@@ -76,9 +73,7 @@ impl ViewportManager {
             pan: Vector::ZERO,
             active_tool: None,
             tool_dragging: false,
-            operations: Vec::new(),
-            redo_stack: Vec::new(),
-            active_preview: None,
+            stack: OperationStack::new(),
             last_bounds: Cell::new(Rectangle::new(Point::new(0.0, 0.0), Size::ZERO)),
             crop_pan: Cell::new(None),
         }
@@ -88,12 +83,12 @@ impl ViewportManager {
         &self.last_bounds
     }
 
-    pub fn operations(&self) -> &Vec<Box<dyn ToolOperation>> {
-        &self.operations
+    pub fn operations(&self) -> &[Box<dyn ToolOperation>] {
+        self.stack.operations()
     }
 
     pub fn operations_mut(&mut self) -> &mut Vec<Box<dyn ToolOperation>> {
-        &mut self.operations
+        self.stack.operations_mut()
     }
 
     pub fn set_image(&mut self, image: Option<CanvasImage>, base: Option<DynamicImage>) {
@@ -109,7 +104,7 @@ impl ViewportManager {
         self.working_image = base;
         self.zoom = 1.0;
         self.pan = Vector::ZERO;
-        self.active_preview = None;
+        self.stack.set_preview(None);
         self.active_tool = None;
         self.cache.clear();
         self.dirty.set(true);
@@ -121,7 +116,7 @@ impl ViewportManager {
 
     pub fn rebuild_image(&mut self, original: &DynamicImage) {
         let mut working = original.clone();
-        for op in &self.operations {
+        for op in self.stack.operations() {
             op.apply(&mut working);
         }
 
@@ -135,8 +130,7 @@ impl ViewportManager {
         self.zoom = 1.0;
         self.pan = Vector::ZERO;
 
-        self.operations.clear();
-        self.redo_stack.clear();
+        self.stack.clear_history();
         self.working_image = Some(working);
     }
 
@@ -246,19 +240,13 @@ impl ViewportManager {
     /// Commit an operation directly to the undo stack.
     // Clears redo stack.
     pub fn commit(&mut self, op: Box<dyn ToolOperation>) {
-        self.operations.push(op);
-        self.redo_stack.clear();
+        self.stack.commit(op);
     }
 
     /// Commit the active preview via its own `commit()` method.
     /// Returns true if a commit was made.
     pub fn apply_tool(&mut self) -> bool {
-        if let Some(ref preview) = self.active_preview
-            && let Some(committed) = preview.commit()
-        {
-            self.operations.push(committed);
-            self.redo_stack.clear();
-            self.active_preview = None;
+        if self.stack.commit_preview() {
             self.active_tool = None;
             self.tool_dragging = false;
             return true;
@@ -269,51 +257,39 @@ impl ViewportManager {
 
     /// Cancel the active tool. Clears the preview without committing.
     pub fn cancel_tool(&mut self) {
-        self.active_preview = None;
+        self.stack.set_preview(None);
         self.active_tool = None;
         self.tool_dragging = false;
     }
 
     /// Mutable access to the active preview for tool specific config.
     pub fn preview_mut(&mut self) -> Option<&mut (dyn ToolOperation + 'static)> {
-        self.active_preview.as_deref_mut()
+        self.stack.preview_mut()
     }
 
     /// Undo the last committed operation.
     pub fn undo(&mut self) -> Option<&dyn ToolOperation> {
-        if let Some(op) = self.operations.pop() {
-            self.redo_stack.push(op);
-            self.redo_stack.last().map(std::convert::AsRef::as_ref)
-        } else {
-            None
-        }
+        self.stack.undo()
     }
 
     /// Redo the last undone operation.
     pub fn redo(&mut self) -> Option<&dyn ToolOperation> {
-        if let Some(op) = self.redo_stack.pop() {
-            self.operations.push(op);
-            self.operations.last().map(std::convert::AsRef::as_ref)
-        } else {
-            None
-        }
+        self.stack.redo()
     }
 
     /// Clear all operations and redo history.
     pub fn revert_all(&mut self) {
-        self.operations.clear();
-        self.redo_stack.clear();
-        self.active_preview = None;
+        self.stack.clear();
         self.working_image = None;
     }
 
     /// Set the active tool's live preview; not committed to undo stack.
     pub fn set_preview(&mut self, preview: Option<Box<dyn ToolOperation>>) {
-        self.active_preview = preview;
+        self.stack.set_preview(preview);
     }
 
     pub fn preview_ref(&self) -> Option<&(dyn ToolOperation + 'static)> {
-        self.active_preview.as_deref()
+        self.stack.preview()
     }
 
     /// Convert a screen space point to image coordinates.
@@ -444,11 +420,11 @@ impl ViewportManager {
     }
 
     pub fn can_undo(&self) -> bool {
-        !self.operations.is_empty()
+        self.stack.can_undo()
     }
 
     pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
+        self.stack.can_redo()
     }
 
     pub const fn tool_dragging(&self) -> bool {
@@ -499,12 +475,8 @@ impl Viewport<'_> {
             zoom: mgr.zoom,
             pan: mgr.pan,
             active_tool: mgr.active_tool,
-            operations: &mgr.operations,
-            preview: if is_crop {
-                None
-            } else {
-                mgr.active_preview.as_deref()
-            },
+            operations: mgr.stack.operations(),
+            preview: if is_crop { None } else { mgr.stack.preview() },
             overlay_only: true,
         };
 
@@ -523,7 +495,7 @@ impl Viewport<'_> {
             pan: Vector::ZERO,
             active_tool: mgr.active_tool,
             operations: &[],
-            preview: mgr.active_preview.as_deref(),
+            preview: mgr.stack.preview(),
             overlay_only: true,
         };
 
@@ -600,8 +572,8 @@ impl Viewport<'_> {
 
             MouseEvent::ButtonPressed(Button::Left) => {
                 let crop = mgr
-                    .active_preview
-                    .as_deref()
+                    .stack
+                    .preview()
                     .and_then(|preview| preview.as_any().downcast_ref::<CropSelection>());
 
                 // Grab a handle first, hit-tested in unclamped fit space so a handle laid
@@ -785,9 +757,7 @@ impl Widget<CanvasMessage, Theme, Renderer> for Viewport<'_> {
 
         // Layer 2: Tool overlays (operations + non-crop preview)
         let is_crop = self.manager.active_tool == Some(ToolKind::Crop);
-        if !self.manager.operations.is_empty()
-            || (self.manager.active_preview.is_some() && !is_crop)
-        {
+        if !self.manager.stack.is_empty() || (self.manager.stack.preview().is_some() && !is_crop) {
             renderer.with_layer(bounds, |renderer| {
                 let overlay = self.overlay_element();
                 overlay.as_widget().draw(
@@ -806,7 +776,7 @@ impl Widget<CanvasMessage, Theme, Renderer> for Viewport<'_> {
         }
 
         // Layer 3: Crop preview in screen space
-        if is_crop && self.manager.active_preview.is_some() {
+        if is_crop && self.manager.stack.preview().is_some() {
             renderer.with_layer(bounds, |renderer| {
                 let crop_overlay = self.crop_overlay_element();
                 crop_overlay.as_widget().draw(
@@ -892,7 +862,7 @@ impl Widget<CanvasMessage, Theme, Renderer> for Viewport<'_> {
                     self.manager.screen_to_image(position, bounds)
                 };
                 if let Some(img_point) = img_point {
-                    if let Some(preview) = self.manager.active_preview.as_deref() {
+                    if let Some(preview) = self.manager.stack.preview() {
                         return preview.cursor_at(img_point);
                     }
                     return mouse::Interaction::Crosshair;
