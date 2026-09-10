@@ -12,6 +12,7 @@ pub use tool::{
     pencil::{PencilOperation, PencilPreview},
     pixelate::PixelateOperation,
     pt_to_px,
+    redact::RedactOperation,
     shapes::{ShapeKind, ShapeOperation, ShapePreview},
     text::{TextDragHandle, TextOperation, TextPreview},
 };

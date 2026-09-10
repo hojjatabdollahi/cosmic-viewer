@@ -5,6 +5,7 @@ pub mod magnifier;
 pub mod pen;
 pub mod pencil;
 pub mod pixelate;
+pub mod redact;
 pub mod shapes;
 pub mod text;
 
