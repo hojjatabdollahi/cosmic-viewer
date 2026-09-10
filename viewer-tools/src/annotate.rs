@@ -15,5 +15,8 @@ pub use tool::{
     pt_to_px,
     redact::RedactOperation,
     shapes::{ShapeKind, ShapeOperation, ShapePreview},
-    text::{TextDragHandle, TextOperation, TextPreview},
+    text::{
+        KeyOutcome, TextDragHandle, TextFormat, TextOperation, TextPreview, TextStyle,
+        font_families,
+    },
 };

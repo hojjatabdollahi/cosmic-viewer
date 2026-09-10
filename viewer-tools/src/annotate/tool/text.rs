@@ -3,8 +3,9 @@
 pub mod operation;
 pub mod preview;
 
-use cosmic::iced::advanced::graphics::text::cosmic_text;
-use cosmic::iced::{Point, Rectangle, Size, mouse};
+use cosmic::iced::advanced::graphics::text::{cosmic_text, font_system};
+use cosmic::iced::alignment::Horizontal;
+use cosmic::iced::{Point, Rectangle, Size, font, mouse};
 pub use operation::TextOperation;
 pub use preview::TextPreview;
 use std::collections::HashSet;
@@ -142,6 +143,101 @@ pub fn pt_to_px(pt: f32) -> f32 {
     pt * PT_TO_PX
 }
 
+/// The interface font's family, which is what a new label starts in.
+#[must_use]
+pub fn default_font_family() -> &'static str {
+    match cosmic::font::default().family {
+        font::Family::Name(name) => name,
+        _ => "Fira Sans",
+    }
+}
+
+/// Every installed font family, sorted. Falls back to the interface font when
+/// the font system has nothing to offer.
+///
+/// # Panics
+///
+/// Panics if the shared font-system lock is poisoned.
+#[must_use]
+pub fn font_families() -> Vec<&'static str> {
+    let mut font_sys = font_system().write().expect("Write font system");
+    let unique: HashSet<String> = font_sys
+        .raw()
+        .db()
+        .faces()
+        .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+        .collect();
+    drop(font_sys);
+    let mut families: Vec<String> = unique.into_iter().collect();
+    families.sort();
+    if families.is_empty() {
+        return vec![default_font_family()];
+    }
+    families.iter().map(|name| intern_str(name)).collect()
+}
+
+/// The styling a text label is typed with.
+// reason: bold/italic/underline are independent rich-text attributes.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextFormat {
+    pub font_family: &'static str,
+    /// Size in pixels, not points.
+    pub font_size: f32,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub alignment: Horizontal,
+}
+
+impl Default for TextFormat {
+    fn default() -> Self {
+        Self {
+            font_family: default_font_family(),
+            font_size: pt_to_px(24.0),
+            bold: false,
+            italic: false,
+            underline: false,
+            alignment: Horizontal::Left,
+        }
+    }
+}
+
+impl TextFormat {
+    /// Index into [`FONT_SIZE_PRESETS_PT`] of the current size, if it is a preset.
+    #[must_use]
+    pub fn size_index(&self) -> Option<usize> {
+        FONT_SIZE_PRESETS_PT
+            .iter()
+            .position(|pt| (pt_to_px(*pt) - self.font_size).abs() < 0.01)
+    }
+}
+
+/// A toggleable text attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextStyle {
+    Bold,
+    Italic,
+    Underline,
+}
+
+/// What a key press did to a [`TextPreview`], and what the caller still has to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyOutcome {
+    /// The key was not for the editor.
+    Ignored,
+    /// Handled. Nothing more to do.
+    Consumed,
+    /// The edit is finished. Commit the preview.
+    Commit,
+    /// Bold, italic or underline changed. Refresh any format controls.
+    FormatChanged,
+    /// Put this text on the clipboard.
+    Copy(String),
+    /// Read the clipboard and pass it to [`TextPreview::paste`].
+    Paste,
+}
+
 #[must_use]
 pub fn px_to_pt(px: f32) -> f32 {
     px / PT_TO_PX
@@ -245,4 +341,19 @@ pub fn snap_font_size(target_px: f32) -> f32 {
         .unwrap_or(24.0);
 
     pt_to_px(snapped_pt)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_size_is_a_preset() {
+        assert!(TextFormat::default().size_index().is_some());
+    }
+
+    #[test]
+    fn font_families_is_never_empty() {
+        assert!(!font_families().is_empty());
+    }
 }

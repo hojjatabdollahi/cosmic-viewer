@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use super::{
-    BORDER_WIDTH, DEFAULT_BOX_WIDTH, DRAG_THRESHOLD, LINE_HEIGHT_FACTOR, MIN_BOX_HEIGHT,
-    MIN_BOX_WIDTH, TextDragHandle, TextOperation, TextSpan, build_buffer_line, color_channel_u8,
-    content_height, encode_align, group_spans, intern_str, rotated_footprint, snap_font_size,
-    span_attrs,
+    BORDER_WIDTH, DEFAULT_BOX_WIDTH, DRAG_THRESHOLD, KeyOutcome, LINE_HEIGHT_FACTOR,
+    MIN_BOX_HEIGHT, MIN_BOX_WIDTH, TextDragHandle, TextFormat, TextOperation, TextSpan, TextStyle,
+    build_buffer_line, color_channel_u8, content_height, encode_align, group_spans, intern_str,
+    rotated_footprint, snap_font_size, span_attrs,
 };
 use crate::{ToolOperation, annotate::tool::text::TEXT_INSET};
 use cosmic::{
@@ -15,7 +15,9 @@ use cosmic::{
     iced::{
         Color, Font, Point, Radians, Rectangle, Size, Vector,
         alignment::{Horizontal, Vertical},
-        font, mouse,
+        font,
+        keyboard::{Key, Modifiers, key::Named},
+        mouse,
     },
 };
 use cosmic_text::Edit;
@@ -93,6 +95,171 @@ impl TextPreview {
             custom_dragged: false,
             rotation_steps: 0,
         }
+    }
+
+    #[must_use]
+    pub fn with_format(color: Color, format: &TextFormat) -> Self {
+        Self::new(
+            color,
+            format.font_size,
+            format.font_family,
+            format.bold,
+            format.italic,
+            format.underline,
+            format.alignment,
+        )
+    }
+
+    /// The styling at the caret, as the format controls should show it.
+    #[must_use]
+    pub const fn format(&self) -> TextFormat {
+        TextFormat {
+            font_family: self.font_family,
+            font_size: self.font_size,
+            bold: self.bold,
+            italic: self.italic,
+            underline: self.underline,
+            alignment: self.alignment,
+        }
+    }
+
+    /// Flip an attribute for the selection, or for what is typed next.
+    pub fn toggle_style(&mut self, style: TextStyle) {
+        match style {
+            TextStyle::Bold => {
+                self.bold = !self.bold;
+                let bold = self.bold;
+                self.apply_attr_to_selection(|a| {
+                    a.weight(if bold {
+                        cosmic_text::Weight::BOLD
+                    } else {
+                        cosmic_text::Weight::NORMAL
+                    })
+                });
+            }
+            TextStyle::Italic => {
+                self.italic = !self.italic;
+                let italic = self.italic;
+                self.apply_attr_to_selection(|a| {
+                    a.style(if italic {
+                        cosmic_text::Style::Italic
+                    } else {
+                        cosmic_text::Style::Normal
+                    })
+                });
+            }
+            TextStyle::Underline => {
+                self.underline = !self.underline;
+                let underline = self.underline;
+                self.apply_attr_to_selection(|a| a.metadata(usize::from(underline)));
+            }
+        }
+    }
+
+    /// Insert clipboard text at the caret.
+    pub fn paste(&mut self, text: &str) {
+        if !text.is_empty() {
+            self.insert_with_attrs(text);
+        }
+    }
+
+    /// Route a key press to the editor.
+    ///
+    /// Enter and Escape finish the edit, and Shift+Enter breaks the line. Ctrl+B/I/U
+    /// toggle styling, Ctrl+A/C/X/V edit the selection. Everything else moves the
+    /// caret or types.
+    pub fn handle_key(
+        &mut self,
+        key: &Key,
+        modifiers: Modifiers,
+        text: Option<&str>,
+    ) -> KeyOutcome {
+        let shift = modifiers.shift();
+
+        if matches!(key, Key::Named(Named::Escape))
+            || (matches!(key, Key::Named(Named::Enter)) && !shift)
+        {
+            return KeyOutcome::Commit;
+        }
+
+        if modifiers.control() {
+            let Key::Character(c) = key else {
+                return KeyOutcome::Ignored;
+            };
+            return match c.as_str() {
+                "b" => {
+                    self.toggle_style(TextStyle::Bold);
+                    KeyOutcome::FormatChanged
+                }
+                "i" => {
+                    self.toggle_style(TextStyle::Italic);
+                    KeyOutcome::FormatChanged
+                }
+                "u" => {
+                    self.toggle_style(TextStyle::Underline);
+                    KeyOutcome::FormatChanged
+                }
+                "a" => {
+                    self.select_all();
+                    KeyOutcome::Consumed
+                }
+                "c" => self
+                    .copy_selection()
+                    .map_or(KeyOutcome::Consumed, KeyOutcome::Copy),
+                "x" => self.copy_selection().map_or(KeyOutcome::Consumed, |sel| {
+                    self.delete_selection();
+                    KeyOutcome::Copy(sel)
+                }),
+                "v" => KeyOutcome::Paste,
+                _ => KeyOutcome::Ignored,
+            };
+        }
+
+        match key {
+            Key::Named(Named::Enter) => {
+                self.editor_action(cosmic_text::Action::Enter);
+            }
+            Key::Named(Named::Backspace) => {
+                self.editor_action(cosmic_text::Action::Backspace);
+            }
+            Key::Named(Named::Delete) => {
+                self.editor_action(cosmic_text::Action::Delete);
+            }
+            Key::Named(Named::ArrowLeft) => {
+                self.motion_with_shift(cosmic_text::Motion::Left, shift);
+            }
+            Key::Named(Named::ArrowRight) => {
+                self.motion_with_shift(cosmic_text::Motion::Right, shift);
+            }
+            Key::Named(Named::ArrowUp) => {
+                self.motion_with_shift(cosmic_text::Motion::Up, shift);
+            }
+            Key::Named(Named::ArrowDown) => {
+                self.motion_with_shift(cosmic_text::Motion::Down, shift);
+            }
+            Key::Named(Named::Home) => {
+                self.motion_with_shift(cosmic_text::Motion::Home, shift);
+            }
+            Key::Named(Named::End) => {
+                self.motion_with_shift(cosmic_text::Motion::End, shift);
+            }
+            Key::Named(
+                Named::Shift | Named::Control | Named::Alt | Named::Super | Named::CapsLock,
+            ) => return KeyOutcome::Consumed,
+            _ => match text {
+                Some(typed) if !typed.is_empty() => self.insert_with_attrs(typed),
+                _ => match key {
+                    Key::Character(c) => self.insert_with_attrs(c.as_str()),
+                    _ => return KeyOutcome::Ignored,
+                },
+            },
+        }
+
+        // Keep the exposed styling in step with wherever the caret ended up.
+        if !self.sync_format_over_selection() {
+            self.sync_format_at_cursor();
+        }
+        KeyOutcome::Consumed
     }
 
     /// Clockwise quarter-turns of the editing rotation (mod 4).
