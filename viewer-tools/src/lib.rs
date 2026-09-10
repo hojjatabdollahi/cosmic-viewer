@@ -20,6 +20,31 @@ use cosmic::{
 use image::DynamicImage;
 use std::{any::Any, fmt::Debug};
 
+/// Rasterize `ops` onto `image`, which covers `region` of operation space at
+/// `scale` image pixels per operation unit.
+///
+/// # Panics
+///
+/// Panics if `image` is not RGBA or cannot back a pixmap. See the operations'
+/// `apply`.
+pub fn apply_all(
+    ops: &[Box<dyn ToolOperation>],
+    image: &mut DynamicImage,
+    region: Rectangle,
+    scale: f32,
+) {
+    let region = Rectangle::new(
+        Point::new(region.x * scale, region.y * scale),
+        Size::new(region.width * scale, region.height * scale),
+    );
+    for op in ops {
+        let mut op = op.clone_boxed();
+        op.transform_scale(scale);
+        op.transform_crop(region);
+        op.apply(image);
+    }
+}
+
 /// A tool operation that can be draw as an overlay and applied to an image.
 ///
 /// Committed operations live in the undo/redo stack.
@@ -82,6 +107,9 @@ pub trait ToolOperation: Debug + Send {
 
     /// Transform this operation's coordinates for a crop.
     fn transform_crop(&mut self, _region: Rectangle) {}
+
+    /// Scale every coordinate and size by `factor`.
+    fn transform_scale(&mut self, _factor: f32) {}
 
     fn bounds(&self) -> Option<Rectangle> {
         None

@@ -216,6 +216,21 @@ impl ToolOperation for TextOperation {
         Box::new(self.clone())
     }
 
+    fn transform_scale(&mut self, factor: f32) {
+        self.position.x *= factor;
+        self.position.y *= factor;
+        self.bounding_box.x *= factor;
+        self.bounding_box.y *= factor;
+        self.bounding_box.width *= factor;
+        self.bounding_box.height *= factor;
+        self.font_size *= factor;
+        for span in &mut self.spans {
+            if let Some(size) = span.font_size.as_mut() {
+                *size *= factor;
+            }
+        }
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, _scale: f32) {
         if self.spans.is_empty() {
             return;

@@ -27,6 +27,14 @@ impl ToolOperation for PencilOperation {
         Box::new(self.clone())
     }
 
+    fn transform_scale(&mut self, factor: f32) {
+        for point in &mut self.points {
+            point.x *= factor;
+            point.y *= factor;
+        }
+        self.width *= factor;
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, _scale: f32) {
         if self.points.len() < 2 {
             return;

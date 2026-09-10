@@ -70,6 +70,14 @@ impl ToolOperation for ShapeOperation {
         Box::new(self.clone())
     }
 
+    fn transform_scale(&mut self, factor: f32) {
+        for point in [&mut self.start, &mut self.end] {
+            point.x *= factor;
+            point.y *= factor;
+        }
+        self.width *= factor;
+    }
+
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, scale: f32) {
         draw_shape(
             self.kind, self.start, self.end, self.color, self.width, frame, scale,
