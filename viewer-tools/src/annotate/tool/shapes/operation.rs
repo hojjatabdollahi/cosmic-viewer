@@ -86,6 +86,17 @@ impl ToolOperation for ShapeOperation {
 
     fn apply(&self, image: &mut DynamicImage) {
         match self.kind {
+            ShapeKind::Block => {
+                let rect = normalize_rect(self.start, self.end);
+                let Some(path) = build_path(|pb| {
+                    if let Some(rect) = Rect::from_xywh(rect.x, rect.y, rect.width, rect.height) {
+                        pb.push_rect(rect);
+                    }
+                }) else {
+                    return;
+                };
+                fill_on_image(image, &path, self.color);
+            }
             ShapeKind::Star | ShapeKind::Polygon => {
                 let Some(path) = build_path(|pb| {
                     let verts = match self.kind {
@@ -210,5 +221,27 @@ impl ToolOperation for ShapeOperation {
 
     fn bounds(&self) -> Option<Rectangle> {
         Some(Self::bounds(self))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, RgbaImage};
+
+    #[test]
+    fn block_fills_its_rectangle() {
+        let mut image = DynamicImage::ImageRgba8(RgbaImage::new(20, 20));
+        ShapeOperation::new(
+            ShapeKind::Block,
+            Point::new(5.0, 5.0),
+            Point::new(15.0, 15.0),
+            Color::WHITE,
+            2.0,
+        )
+        .apply(&mut image);
+        let rgba = image.as_rgba8().unwrap();
+        assert_eq!(rgba.get_pixel(10, 10).0[3], 255, "inside is painted");
+        assert_eq!(rgba.get_pixel(2, 2).0[3], 0, "outside is untouched");
     }
 }
