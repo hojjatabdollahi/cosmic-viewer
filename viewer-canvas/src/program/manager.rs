@@ -455,6 +455,7 @@ impl Viewport<'_> {
             active_tool: mgr.active_tool,
             operations: &[],
             preview: None,
+            source: None,
             overlay_only: false,
         };
 
@@ -477,6 +478,7 @@ impl Viewport<'_> {
             active_tool: mgr.active_tool,
             operations: mgr.stack.operations(),
             preview: if is_crop { None } else { mgr.stack.preview() },
+            source: mgr.working_image.as_ref().and_then(DynamicImage::as_rgba8),
             overlay_only: true,
         };
 
@@ -496,6 +498,7 @@ impl Viewport<'_> {
             active_tool: mgr.active_tool,
             operations: &[],
             preview: mgr.stack.preview(),
+            source: mgr.working_image.as_ref().and_then(DynamicImage::as_rgba8),
             overlay_only: true,
         };
 

@@ -17,8 +17,79 @@ use cosmic::{
     iced::widget::canvas::Frame,
     iced::{Point, Rectangle, Size, mouse},
 };
-use image::DynamicImage;
+use image::{DynamicImage, RgbaImage};
 use std::{any::Any, fmt::Debug};
+
+/// The pixels beneath an operation: an image covering operation space from
+/// `origin`, at `scale` image pixels per operation unit.
+#[derive(Clone, Copy, Debug)]
+pub struct SampleSource<'a> {
+    pub image: &'a RgbaImage,
+    pub origin: Point,
+    pub scale: f32,
+    /// The operations under the one sampling. They are rendered into what it
+    /// samples, so a live loupe shows the annotated picture the export will.
+    pub below: &'a [Box<dyn ToolOperation>],
+}
+
+impl SampleSource<'_> {
+    /// An image whose pixel grid is operation space.
+    #[must_use]
+    pub const fn identity(image: &RgbaImage) -> SampleSource<'_> {
+        SampleSource {
+            image,
+            origin: Point::ORIGIN,
+            scale: 1.0,
+            below: &[],
+        }
+    }
+
+    /// The pixels of `area`, in image pixel coordinates, with [`Self::below`]
+    /// rendered onto them, and the offset of the returned image's top-left
+    /// corner in image pixels. Without operations below, the image itself.
+    // reason: the area is clamped to the image before the casts.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[must_use]
+    pub fn rendered(&self, area: Rectangle) -> (std::borrow::Cow<'_, RgbaImage>, Point) {
+        use std::borrow::Cow;
+        if self.below.is_empty() {
+            return (Cow::Borrowed(self.image), Point::ORIGIN);
+        }
+        let (w, h) = self.image.dimensions();
+        let x0 = area.x.floor().clamp(0.0, w as f32) as u32;
+        let y0 = area.y.floor().clamp(0.0, h as f32) as u32;
+        let x1 = (area.x + area.width).ceil().clamp(0.0, w as f32) as u32;
+        let y1 = (area.y + area.height).ceil().clamp(0.0, h as f32) as u32;
+        if x1 <= x0 || y1 <= y0 {
+            return (Cow::Borrowed(self.image), Point::ORIGIN);
+        }
+        let mut crop = DynamicImage::ImageRgba8(
+            image::imageops::crop_imm(self.image, x0, y0, x1 - x0, y1 - y0).to_image(),
+        );
+        // The operation-space rectangle this crop covers.
+        let region = Rectangle::new(
+            Point::new(
+                self.origin.x + x0 as f32 / self.scale,
+                self.origin.y + y0 as f32 / self.scale,
+            ),
+            Size::new((x1 - x0) as f32 / self.scale, (y1 - y0) as f32 / self.scale),
+        );
+        apply_all(self.below, &mut crop, region, self.scale);
+        (
+            Cow::Owned(crop.into_rgba8()),
+            Point::new(x0 as f32, y0 as f32),
+        )
+    }
+
+    /// Operation-space point to image pixel coordinates.
+    #[must_use]
+    pub fn to_pixels(&self, point: Point) -> Point {
+        Point::new(
+            (point.x - self.origin.x) * self.scale,
+            (point.y - self.origin.y) * self.scale,
+        )
+    }
+}
 
 /// Rasterize `ops` onto `image`, which covers `region` of operation space at
 /// `scale` image pixels per operation unit.
@@ -55,6 +126,19 @@ pub trait ToolOperation: Debug + Send {
     /// Draw the operation's overlay onto the frame.
     /// The frame is already translated/scaled to image coordinates.
     fn draw(&self, frame: &mut Frame<Renderer>, image_size: Size, scale: f32);
+
+    /// Draw with the pixels beneath the operation available. Only tools that
+    /// sample them override this. Everything else falls through to `draw`.
+    fn draw_sampled(
+        &self,
+        frame: &mut Frame<Renderer>,
+        image_size: Size,
+        scale: f32,
+        source: Option<&SampleSource<'_>>,
+    ) {
+        let _ = source;
+        self.draw(frame, image_size, scale);
+    }
 
     /// A boxed copy, for rasterizing a transformed version without touching
     /// the original.

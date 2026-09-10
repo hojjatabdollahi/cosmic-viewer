@@ -13,7 +13,8 @@ use cosmic::{
     },
     widget::canvas::Cache,
 };
-use viewer_tools::ToolOperation;
+use image::RgbaImage;
+use viewer_tools::{SampleSource, ToolOperation};
 
 /// Per-pixel touchpad zoom sensitivity. Lower = slower.
 const PIXEL_ZOOM_RATE: f32 = 0.0025;
@@ -40,6 +41,8 @@ pub struct ViewerCanvas<'a> {
     pub active_tool: Option<ToolKind>,
     pub operations: &'a [Box<dyn ToolOperation>],
     pub preview: Option<&'a dyn ToolOperation>,
+    /// The working image's pixels, for tools that sample what is under them.
+    pub source: Option<&'a RgbaImage>,
     pub overlay_only: bool,
 }
 
@@ -169,12 +172,13 @@ impl Program<CanvasMessage, Theme, Renderer> for ViewerCanvas<'_> {
                         -(image.height as f32) / 2.0,
                     ));
 
+                    let source = self.source.map(SampleSource::identity);
                     for op in self.operations {
-                        op.draw(frame, image_size, effective_scale);
+                        op.draw_sampled(frame, image_size, effective_scale, source.as_ref());
                     }
 
                     if let Some(preview) = self.preview {
-                        preview.draw(frame, image_size, effective_scale);
+                        preview.draw_sampled(frame, image_size, effective_scale, source.as_ref());
                     }
                 };
 
