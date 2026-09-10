@@ -24,6 +24,24 @@ pub enum ShapeKind {
     Polygon,
 }
 
+impl ShapeKind {
+    pub const ALL: [Self; 7] = [
+        Self::Rectangle,
+        Self::Block,
+        Self::Ellipse,
+        Self::Line,
+        Self::Arrow,
+        Self::Star,
+        Self::Polygon,
+    ];
+
+    /// Filled area rather than an outline. The stroke width does not apply.
+    #[must_use]
+    pub const fn is_filled(self) -> bool {
+        matches!(self, Self::Block | Self::Star | Self::Polygon)
+    }
+}
+
 /// Draw a shape overlay on the canvas.
 pub fn draw_shape(
     kind: ShapeKind,
