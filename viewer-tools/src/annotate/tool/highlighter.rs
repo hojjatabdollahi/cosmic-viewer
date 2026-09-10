@@ -5,3 +5,6 @@ mod preview;
 
 pub use operation::HighlighterOperation;
 pub use preview::HighlighterPreview;
+
+/// Highlighter transparency factor
+pub const HIGHLIGHT_ALPHA: f32 = 0.35;

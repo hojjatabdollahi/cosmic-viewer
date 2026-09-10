@@ -4,20 +4,18 @@ use std::any::Any;
 
 use crate::{
     ToolOperation,
-    renderer::{build_path, stroke_on_image},
+    renderer::{highlight_shape, smoothed_path, stroke_on_image},
     rotate::RotateDirection,
 };
 use cosmic::{
     Renderer,
-    iced::widget::canvas::{Frame, LineCap, Path, Stroke, path::Builder},
+    iced::widget::canvas::Frame,
     iced::{Color, Point, Rectangle, Size},
-    widget::canvas::LineJoin,
 };
 use image::DynamicImage;
 use tiny_skia::LineCap as SkiaLineCap;
 
-/// Highlighter transparency factor
-const HIGHLIGHT_ALPHA: f32 = 0.35;
+use super::HIGHLIGHT_ALPHA;
 
 #[derive(Debug, Clone)]
 pub struct HighlighterOperation {
@@ -51,85 +49,15 @@ impl ToolOperation for HighlighterOperation {
     }
 
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, scale: f32) {
-        if self.points.len() < 2 {
-            return;
+        // Filled, not stroked: see `renderer::stroke_outline`.
+        if let Some(shape) = highlight_shape(&self.points, self.width * scale) {
+            frame.fill(&shape, self.highlight_color());
         }
-
-        let path = Path::new(|builder: &mut Builder| {
-            builder.move_to(self.points[0]);
-
-            if self.points.len() == 2 {
-                builder.line_to(self.points[1]);
-            } else {
-                let mid = Point::new(
-                    f32::midpoint(self.points[0].x, self.points[1].x),
-                    f32::midpoint(self.points[0].y, self.points[1].y),
-                );
-
-                builder.line_to(mid);
-
-                for idx in 1..self.points.len() - 1 {
-                    let control = self.points[idx];
-                    let next = self.points[idx + 1];
-                    let end = Point::new(
-                        f32::midpoint(control.x, next.x),
-                        f32::midpoint(control.y, next.y),
-                    );
-
-                    builder.quadratic_curve_to(control, end);
-                }
-
-                builder.line_to(
-                    *self
-                        .points
-                        .last()
-                        .expect("points non-empty: len checked at entry"),
-                );
-            }
-        });
-
-        frame.stroke(
-            &path,
-            Stroke::default()
-                .with_color(self.highlight_color())
-                .with_width(self.width * scale)
-                .with_line_cap(LineCap::Square)
-                .with_line_join(LineJoin::Round),
-        );
     }
 
     fn apply(&self, image: &mut DynamicImage) {
-        if self.points.len() < 2 {
-            return;
-        }
-
-        let Some(path) = build_path(|path_builder| {
-            path_builder.move_to(self.points[0].x, self.points[0].y);
-
-            if self.points.len() == 2 {
-                path_builder.line_to(self.points[1].x, self.points[1].y);
-            } else {
-                // Mirror the preview/draw smoothing: line to the first midpoint, then
-                // quadratic curves through successive midpoints, then a final segment.
-                let mid_x = f32::midpoint(self.points[0].x, self.points[1].x);
-                let mid_y = f32::midpoint(self.points[0].y, self.points[1].y);
-                path_builder.line_to(mid_x, mid_y);
-
-                for idx in 1..self.points.len() - 1 {
-                    let control = self.points[idx];
-                    let next = self.points[idx + 1];
-                    let end_x = f32::midpoint(control.x, next.x);
-                    let end_y = f32::midpoint(control.y, next.y);
-                    path_builder.quad_to(control.x, control.y, end_x, end_y);
-                }
-
-                let last = *self
-                    .points
-                    .last()
-                    .expect("points non-empty: len checked at entry");
-                path_builder.line_to(last.x, last.y);
-            }
-        }) else {
+        // The same curve the preview draws, so what is saved is what was seen.
+        let Some(path) = smoothed_path(&self.points) else {
             return;
         };
 

@@ -2,18 +2,15 @@
 
 use std::any::Any;
 
-use super::HighlighterOperation;
+use super::{HIGHLIGHT_ALPHA, HighlighterOperation};
 use crate::ToolOperation;
+use crate::renderer::highlight_shape;
 use cosmic::{
     Renderer,
-    iced::widget::canvas::{Frame, LineCap, Path, Stroke, path::Builder},
+    iced::widget::canvas::Frame,
     iced::{Color, Point, Size, mouse},
-    widget::canvas::LineJoin,
 };
 use image::DynamicImage;
-
-/// Highlighter transparency factor
-const HIGHLIGHT_ALPHA: f32 = 0.35;
 
 #[derive(Debug, Clone)]
 pub struct HighlighterPreview {
@@ -48,52 +45,10 @@ impl ToolOperation for HighlighterPreview {
     }
 
     fn draw(&self, frame: &mut Frame<Renderer>, _image_size: Size, scale: f32) {
-        if self.points.len() < 2 {
-            return;
+        // Filled, not stroked: see `renderer::stroke_outline`.
+        if let Some(shape) = highlight_shape(&self.points, self.width * scale) {
+            frame.fill(&shape, self.highlight_color());
         }
-
-        let path = Path::new(|builder: &mut Builder| {
-            builder.move_to(self.points[0]);
-
-            if self.points.len() == 2 {
-                builder.line_to(self.points[1]);
-            } else {
-                // Line to midpoint of first two points
-                let mid = Point::new(
-                    f32::midpoint(self.points[0].x, self.points[1].x),
-                    f32::midpoint(self.points[0].y, self.points[1].y),
-                );
-                builder.line_to(mid);
-
-                // Quadratic curves through successive midpoints
-                for idx in 1..self.points.len() - 1 {
-                    let control = self.points[idx];
-                    let next = self.points[idx + 1];
-                    let end = Point::new(
-                        f32::midpoint(control.x, next.x),
-                        f32::midpoint(control.y, next.y),
-                    );
-                    builder.quadratic_curve_to(control, end);
-                }
-
-                // Final segment to last point
-                builder.line_to(
-                    *self
-                        .points
-                        .last()
-                        .expect("points non-empty: len checked at entry"),
-                );
-            }
-        });
-
-        frame.stroke(
-            &path,
-            Stroke::default()
-                .with_color(self.highlight_color())
-                .with_width(self.width * scale)
-                .with_line_cap(LineCap::Square)
-                .with_line_join(LineJoin::Round),
-        );
     }
 
     fn apply(&self, _image: &mut DynamicImage) {

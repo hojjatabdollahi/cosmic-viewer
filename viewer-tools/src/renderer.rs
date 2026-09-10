@@ -1,13 +1,110 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use cosmic::iced::Color;
+use cosmic::iced::widget::canvas;
+use cosmic::iced::{Color, Point};
 use image::{DynamicImage, RgbaImage};
-use tiny_skia::{LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, Stroke, Transform};
+use tiny_skia::{
+    LineCap, LineJoin, Paint, Path, PathBuilder, PathSegment, Pixmap, Stroke, Transform,
+};
 
 pub fn build_path(f: impl FnOnce(&mut PathBuilder)) -> Option<Path> {
     let mut path_builder = PathBuilder::new();
     f(&mut path_builder);
     path_builder.finish()
+}
+
+/// A hand-drawn stroke, smoothed into curves.
+///
+/// Pointer motion arrives as a chain of short straight hops. Curving through
+/// the midpoint of each hop, with the sampled point as the control, turns that
+/// chain into something that reads as drawn rather than plotted. Returns
+/// `None` for fewer than two points, which is a click and marks nothing.
+#[must_use]
+pub fn smoothed_path(points: &[Point]) -> Option<Path> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    build_path(|builder| {
+        builder.move_to(points[0].x, points[0].y);
+
+        if points.len() == 2 {
+            builder.line_to(points[1].x, points[1].y);
+            return;
+        }
+
+        builder.line_to(
+            f32::midpoint(points[0].x, points[1].x),
+            f32::midpoint(points[0].y, points[1].y),
+        );
+
+        for idx in 1..points.len() - 1 {
+            let control = points[idx];
+            let next = points[idx + 1];
+            builder.quad_to(
+                control.x,
+                control.y,
+                f32::midpoint(control.x, next.x),
+                f32::midpoint(control.y, next.y),
+            );
+        }
+
+        let last = points[points.len() - 1];
+        builder.line_to(last.x, last.y);
+    })
+}
+
+/// The region a stroke covers, as a shape to fill rather than a line to draw.
+///
+/// Drawing a translucent line darkens it wherever it passes over itself, and a
+/// hand-drawn curve passes over itself constantly - the tessellator overlaps
+/// its own geometry at every join, so a smooth sweep comes out pebbled with
+/// wedges before the stroke ever doubles back. One filled outline covers each
+/// pixel once, which is what a highlighter does.
+#[must_use]
+pub fn stroke_outline(path: &Path, width: f32, line_cap: LineCap) -> Option<Path> {
+    path.stroke(
+        &Stroke {
+            width,
+            line_cap,
+            line_join: LineJoin::Round,
+            ..Stroke::default()
+        },
+        1.0,
+    )
+}
+
+/// Hand a tiny-skia path to the canvas.
+///
+/// The two describe paths the same way, so this is a transcription. It exists
+/// because the outline of a stroke is only computed on the rasterizing side.
+#[must_use]
+pub fn to_canvas_path(path: &Path) -> canvas::Path {
+    let at = |p: tiny_skia::Point| Point::new(p.x, p.y);
+
+    canvas::Path::new(|builder| {
+        for segment in path.segments() {
+            match segment {
+                PathSegment::MoveTo(p) => builder.move_to(at(p)),
+                PathSegment::LineTo(p) => builder.line_to(at(p)),
+                PathSegment::QuadTo(control, to) => {
+                    builder.quadratic_curve_to(at(control), at(to));
+                }
+                PathSegment::CubicTo(first, second, to) => {
+                    builder.bezier_curve_to(at(first), at(second), at(to));
+                }
+                PathSegment::Close => builder.close(),
+            }
+        }
+    })
+}
+
+/// The shape a highlighter stroke of this width lays down, ready to fill.
+#[must_use]
+pub fn highlight_shape(points: &[Point], width: f32) -> Option<canvas::Path> {
+    let path = smoothed_path(points)?;
+    let outline = stroke_outline(&path, width, LineCap::Square)?;
+    Some(to_canvas_path(&outline))
 }
 
 // Quantize a 0.0..=1.0 color component to an 8-bit channel. Rounds to nearest
@@ -132,5 +229,44 @@ fn blend_overlay(dst: &mut RgbaImage, overlay: &Pixmap) {
             );
             dst_pixel[3] = intensity_u8(out_alpha * 255.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_highlighter_stroke_covers_a_band_the_width_of_its_nib() {
+        // Drawn flat across, a 20px nib covers 20px of height, and the square
+        // cap hangs half a nib off each end. Stroked, this was a line and the
+        // covered area was the blender's problem. Filled, it is a shape with
+        // an extent that can be checked.
+        let points = [Point::new(10.0, 50.0), Point::new(90.0, 50.0)];
+        let path = smoothed_path(&points).expect("two points make a stroke");
+        let outline =
+            stroke_outline(&path, 20.0, LineCap::Square).expect("a stroke has an outline");
+
+        let bounds = outline.bounds();
+        assert!((bounds.top() - 40.0).abs() < 0.5, "top: {}", bounds.top());
+        assert!(
+            (bounds.bottom() - 60.0).abs() < 0.5,
+            "bottom: {}",
+            bounds.bottom()
+        );
+        assert!((bounds.left() - 0.0).abs() < 0.5, "left: {}", bounds.left());
+        assert!(
+            (bounds.right() - 100.0).abs() < 0.5,
+            "right: {}",
+            bounds.right()
+        );
+    }
+
+    #[test]
+    fn a_click_marks_nothing() {
+        let click = [Point::new(1.0, 1.0)];
+        assert!(smoothed_path(&click).is_none());
+        assert!(highlight_shape(&click, 12.0).is_none());
+        assert!(smoothed_path(&[]).is_none());
     }
 }
