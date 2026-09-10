@@ -56,6 +56,14 @@ struct SpanRun {
 }
 
 impl TextOperation {
+    /// Recolor the whole text: spans carry their own color, which otherwise overrides `color`.
+    pub fn set_color(&mut self, color: Color) {
+        self.color = color;
+        for span in &mut self.spans {
+            span.color = None;
+        }
+    }
+
     /// Box dimensions in the text's reading (un-rotated) orientation. For odd quarter-turns
     /// the image-space `bounding_box` has width/height swapped, so swap them back.
     #[must_use]
