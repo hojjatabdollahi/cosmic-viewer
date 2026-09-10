@@ -10,6 +10,7 @@ pub use tool::{
     magnifier::MagnifierOperation,
     pen::{PenOperation, PenPreview},
     pencil::{PencilOperation, PencilPreview},
+    pixelate::PixelateOperation,
     pt_to_px,
     shapes::{ShapeKind, ShapeOperation, ShapePreview},
     text::{TextDragHandle, TextOperation, TextPreview},
