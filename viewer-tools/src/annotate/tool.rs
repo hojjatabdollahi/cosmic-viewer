@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 pub mod highlighter;
+pub mod magnifier;
 pub mod pen;
 pub mod pencil;
 pub mod shapes;
