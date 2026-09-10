@@ -11,6 +11,11 @@ pub mod text;
 
 pub use text::{FONT_SIZE_LABELS, FONT_SIZE_PRESETS_PT, pt_to_px};
 
+/// Stroke widths offered for the pen and the shapes, in pixels.
+pub const STROKE_PRESETS_PX: [f32; 6] = [2.0, 4.0, 6.0, 8.0, 10.0, 12.0];
+/// Stroke widths offered for the highlighter, in pixels.
+pub const HIGHLIGHTER_PRESETS_PX: [f32; 7] = [8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AnnotateTool {
     #[default]
