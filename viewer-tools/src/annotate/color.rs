@@ -47,3 +47,18 @@ impl From<Color> for AnnotateColor {
         Self(c)
     }
 }
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for AnnotateColor {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        [self.0.r, self.0.g, self.0.b, self.0.a].serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for AnnotateColor {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let [r, g, b, a] = <[f32; 4]>::deserialize(deserializer)?;
+        Ok(Self(Color::from_rgba(r, g, b, a)))
+    }
+}

@@ -6206,6 +6206,7 @@ version = "1.0.0"
 dependencies = [
  "image",
  "libcosmic",
+ "serde",
  "tiny-skia 0.12.0",
 ]
 
